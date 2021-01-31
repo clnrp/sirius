@@ -5,6 +5,33 @@
 # e-mail: cleonerp@gmail.com
 # Apache License
 
+"""
+Main elements
+BUS is the main bus, where data is placed to be sent to other parts of the circuit.
+PC is the program counter, it is an 8-bit counter.
+MAR is the memory address register, and allows you to read or write to a specific address in the RAM memory.
+RAM is RAM memory.
+IR is the instruction register, where the RAM data is stored to be processed.
+Acc is an accumulator register used in arithmetic operations
+B is the auxiliary register
+F is flag register
+Alu is logical and arithmetic unit
+The stack allows you to handle the functions
+
+Instruction cycles
+Cycle is incremented at the falling edge of the clock, and the control word values are updated, and the data on
+the bus is written to the registers at the rising edge.
+
+Cycle 0: On the falling edge, PcOut, MarIn are activated, still on the falling edge of the clock the value of PC
+is placed on the bus, and on the rising edge the value is loaded into MAR.
+
+Cycle 1: On the falling edge, RamOut, IrIn and PcInc are activated, the RAM value is placed on the bus and does
+not depend on the clock, and on the rising edge the value is loaded to the IR and also the PC is increased.
+
+Cycle 2-4: depends on the instruction recorded in IR
+Cycle 5: __EndCycle, for 4-cycle instructions the fifth clears the cycle counter
+"""
+
 from logicbit.logic import *
 from logicbit.clock import *
 from logicbit.utils import *
@@ -165,7 +192,7 @@ class InstDecoder: # instruction decoder
         Cycle = self.__CycleDec.Act(CntBits)
         [NOP,JUMP,LDA,SUM,SUB,AND,OR,XOR,LDC,BTR,CALL,RET] = self.__InstrDec.Act(OpCode)[:12]
         self.__EndCycle = Cycle[5] + Cycle[3]*(JUMP + LDA + LDC + BTR)   # Reset counter
-        Word.PcOut  = Cycle[0]+Cycle[2]*CALL
+        Word.PcOut = Cycle[0]+Cycle[2]*CALL
         Word.IrOut = Cycle[2]*(JUMP + LDA + SUM + SUB) + Cycle[4]*CALL
         Word.MarIn = Cycle[0]
         Word.Jump = Cycle[2]*JUMP + Cycle[3]*RET + Cycle[4]*CALL
@@ -188,24 +215,28 @@ class InstDecoder: # instruction decoder
         Word.StkSen = Cycle[3]*CALL
 
 
-        ''' Cycle 0 -> PcOut e MarIn
-            Cycle 1 -> RamOut, IrIn e PcInc.
-            The control bits will be triggered on the falling edge of the clock.
-            NOP  0000
-            JUMP 0001, 2 -> IrOut, PcInc, Jump;
-            LDA  0010, 2 -> IrOut, AccIn;
-            SUM  0011, 2 -> IrOut, BIn;         3 -> SumSub=0, FIn;         4 -> SumSub=0, AluOut, AccIn
-            SUB  0100, 2 -> IrOut, BIn;         3 -> SumSub=1, FIn;         4 -> SumSub=1, AluOut, AccIn;
-            AND  0101, 2 -> IrOut, BIn;         3 -> Alu0=1, Alu1=0, FIn;   4 -> Alu0=1, Alu1=0, AluOut, AccIn
-            OR   0110, 2 -> IrOut, BIn;         3 -> Alu0=0, Alu1=1, FIn;   4 -> Alu0=0, Alu1=1, AluOut, AccIn
-            XOR  0111, 2 -> IrOut, BIn;         3 -> Alu0=1, Alu1=1, FIn;   4 -> Alu0=1, Alu1=1, AluOut, AccIn
-            LDC  1000, 2 -> AccOut, CIn;
-            BTR  1001, 2 -> PcInc # Opcode = 4bits, Register=4bits, Bit=3bits, SetClear=1  Max 16 register
-            CALL 1010, 2 -> PcOut, StkWr;       3 -> StkCnt, StkSen;        4 -> IrOut, PcInc, Jump
-            RET  1011, 2 -> StkCnt, 'StkSen;    3 -> StkOut, PcInc, Jump
-        '''
+        """"
+        Cycle 0 -> PcOut e MarIn
+        Cycle 1 -> RamOut, IrIn e PcInc.
+        The control bits will be triggered on the falling edge of the clock.
+        NOP  0000
+        JUMP 0001, 2 -> IrOut, PcInc, Jump;
+        LDA  0010, 2 -> IrOut, AccIn;
+        SUM  0011, 2 -> IrOut, BIn;         3 -> SumSub=0, FIn;         4 -> SumSub=0, AluOut, AccIn
+        SUB  0100, 2 -> IrOut, BIn;         3 -> SumSub=1, FIn;         4 -> SumSub=1, AluOut, AccIn;
+        AND  0101, 2 -> IrOut, BIn;         3 -> Alu0=1, Alu1=0, FIn;   4 -> Alu0=1, Alu1=0, AluOut, AccIn
+        OR   0110, 2 -> IrOut, BIn;         3 -> Alu0=0, Alu1=1, FIn;   4 -> Alu0=0, Alu1=1, AluOut, AccIn
+        XOR  0111, 2 -> IrOut, BIn;         3 -> Alu0=1, Alu1=1, FIn;   4 -> Alu0=1, Alu1=1, AluOut, AccIn
+        LDC  1000, 2 -> AccOut, CIn;
+        BTR  1001, 2 -> PcInc # Opcode = 4bits, Register=4bits, Bit=3bits, SetClear=1  Max 16 register
+        CALL 1010, 2 -> PcOut, StkWr;       3 -> StkCnt, StkSen;        4 -> IrOut, PcInc, Jump
+        RET  1011, 2 -> StkCnt, 'StkSen;    3 -> StkOut, PcInc, Jump
+        """
         #Printer(Cycle,"Cycles")
         return Word
+
+    def getCount(self):
+        return [str(value) for value in self.__cnt.Read()]
 
 class Word:
     def __init__(self):
@@ -233,6 +264,10 @@ class Word:
         self.StkOut = LogicBit(0)   # Put top of the stack into Bus
         self.StkSen = LogicBit(0)   # select increase or decrease, when Sen = 1 is increase
 
+    def print(self):
+        values = vars(self)
+        print({key: str(values[key]) for key in values.keys()})
+
 def flogic(clock):
     args = sys.argv[1:]
 
@@ -241,7 +276,7 @@ def flogic(clock):
     Code = f.read()
     f.close()
 
-    Bus = [LogicBit(0) for bit in range(12)] # initializes 12 bits of the Bus with 0
+    Bus = [LogicBit(0) for bit in range(12)]  # initializes 12 bits of the Bus with 0
     Pc = PC8bTris()           # program counter of 8 bits with tri-state
     Mar = MarRegister()       # memory address register
     Ram = RamTris(8,12)       # RAM memory, 8 bits address and 12 bits of data
@@ -254,7 +289,7 @@ def flogic(clock):
     Ir = IR()                 # instruction register
     InstDec = InstDecoder()   # instruction decoder
 
-    w = Word() # Control word
+    w = Word()  # Control word
 
     program = Utils.TextToBinArray(Code)
     # write program in ram
@@ -263,11 +298,10 @@ def flogic(clock):
         for Clk in [LogicBit(0),LogicBit(1)]:
             Ram.Act(value, addr, LogicBit(1), LogicBit(0), LogicBit(0), Clk)
 
-    cnt=0
-    while(clock.GetState()):
+    clock.Next()  # start with clock = 0
+    clock.Run()
+    while clock.GetState():
         Clk = clock.GetClock()
-        cnt+=1
-        print("Clock:"+str(Clk)+", cnt="+str(cnt))
 
         Bus = Pc.Act(Bus, w.PcInc, w.PcOut, w.Jump, w.Reset, Clk)                    # Program counter, 8 bits
         Mar.Act(Bus[0:8], w.MarIn, w.Reset, Clk)                                     # Memory address 8 bits register
@@ -280,15 +314,16 @@ def flogic(clock):
         Bus, Code = Ir.Act(Bus, w.IrIn, w.IrOut, w.Reset, Clk)                       # Instruction register, 12 bits
         InstDec.Act(w, Code, F, Clk)
 
-        #if (Clk == 1):
-        Printer(A.Read(),"A")
-        Printer(B.Read(),"B")
-        Printer(C.Read(),"C")
-        Printer(F.Read(),"F")
-        Printer(Pc.Read(),"Pc")
+        print("Clock:" + str(Clk) + ", cnt=" + str(InstDec.getCount()))
+        w.print()  # print control word
+        Printer(A.Read(), "A")
+        Printer(B.Read(), "B")
+        Printer(C.Read(), "C")
+        Printer(F.Read(), "F")
+        Printer(Pc.Read(), "Pc")
         Printer(Bus, "Bus")
 
-clk = Clock(flogic,10,2) # two samples per state
-clk.start() # initialize clock
+clk = Clock(flogic,10,2)  # two samples per state
+clk.start()  # initialize clock
 #key = Keyboard(clk)
-#key.start() # initialize keyboard
+#key.start()  # initialize keyboard
