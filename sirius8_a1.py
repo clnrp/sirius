@@ -12,7 +12,7 @@ PC is the program counter, it is an 8-bit counter.
 MAR is the memory address register, and allows you to read or write to a specific address in the RAM memory.
 RAM is RAM memory.
 IR is the instruction register, where the RAM data is stored to be processed.
-Acc is an accumulator register used in arithmetic operations
+A is an accumulator register used in arithmetic operations
 B is the auxiliary register
 F is flag register
 Alu is logical and arithmetic unit
@@ -117,8 +117,8 @@ class ALU8bTris12b:
         self.__Alu = ALU8b()
         self.__tristate = TristateBuffer()
 
-    def Act(self, Bus, A, B, Word, F, SumSub, Alu0, Alu1, AluOut, Clk):
-        A,CarryBorrow = self.__Alu.Act(A, B, SumSub, Alu0, Alu1)
+    def Act(self, Bus, A, B, Word, F, AddSub, AluSel, AluOut, Clk):
+        A,CarryBorrow = self.__Alu.Act(A, B, AddSub, AluSel[0], AluSel[1])
         Dir = LogicBit(1)
         A = A + [LogicBit(0), LogicBit(0), LogicBit(0), LogicBit(0)]
 
@@ -200,15 +200,15 @@ class InstDecoder: # instruction decoder
         Word.IrIn = Cycle[1]
         Word.PcInc = Cycle[1] + Cycle[2]*JUMP + Cycle[3]*RET + Cycle[4]*CALL + \
                      Cycle[2]*BTR*(Code[0]*Flag[0]+Code[1]*Flag[1]+Code[2]*Flag[2]+Code[3]*Flag[3]+Code[4]*Flag[4]+Code[5]*Flag[5]+Code[6]*Flag[6]+Code[7]*Flag[7])
-        Word.AccIn = Cycle[2]*LDA + Cycle[4]*(SUM + SUB)
-        Word.AccOut = Cycle[2]*LDC
+        Word.AIn = Cycle[2]*LDA + Cycle[4]*(SUM + SUB)
+        Word.AOut = Cycle[2]*LDC
         Word.BIn = Cycle[2]*(SUM + SUB)
         Word.CIn = Cycle[2]*LDC
         Word.FIn = Cycle[3]*(SUM + SUB + AND + OR + XOR)
         Word.AluOut = Cycle[4]*(SUM + SUB)
-        Word.SumSub = (Cycle[3]+Cycle[4])*(SUM.Not() + SUB)
-        Word.Alu0 = (Cycle[3]+Cycle[4])*(AND + XOR)
-        Word.Alu1 = (Cycle[3]+Cycle[4])*(OR + XOR)
+        Word.AddSub = (Cycle[3]+Cycle[4])*(SUM.Not() + SUB)
+        Word.AluSel[0] = (Cycle[3]+Cycle[4])*(AND + XOR)
+        Word.AluSel[1] = (Cycle[3]+Cycle[4])*(OR + XOR)
         Word.StkCnt = Cycle[2]*RET + Cycle[3]*CALL
         Word.StkWr = Cycle[2]*CALL
         Word.StkOut = Cycle[3]*RET
@@ -221,13 +221,13 @@ class InstDecoder: # instruction decoder
         The control bits will be triggered on the falling edge of the clock.
         NOP  0000
         JUMP 0001, 2 -> IrOut, PcInc, Jump;
-        LDA  0010, 2 -> IrOut, AccIn;
-        SUM  0011, 2 -> IrOut, BIn;         3 -> SumSub=0, FIn;         4 -> SumSub=0, AluOut, AccIn
-        SUB  0100, 2 -> IrOut, BIn;         3 -> SumSub=1, FIn;         4 -> SumSub=1, AluOut, AccIn;
-        AND  0101, 2 -> IrOut, BIn;         3 -> Alu0=1, Alu1=0, FIn;   4 -> Alu0=1, Alu1=0, AluOut, AccIn
-        OR   0110, 2 -> IrOut, BIn;         3 -> Alu0=0, Alu1=1, FIn;   4 -> Alu0=0, Alu1=1, AluOut, AccIn
-        XOR  0111, 2 -> IrOut, BIn;         3 -> Alu0=1, Alu1=1, FIn;   4 -> Alu0=1, Alu1=1, AluOut, AccIn
-        LDC  1000, 2 -> AccOut, CIn;
+        LDA  0010, 2 -> IrOut, AIn;
+        SUM  0011, 2 -> IrOut, BIn;         3 -> AddSub=0, FIn;         4 -> AddSub=0, AluOut, AIn
+        SUB  0100, 2 -> IrOut, BIn;         3 -> AddSub=1, FIn;         4 -> AddSub=1, AluOut, AIn;
+        AND  0101, 2 -> IrOut, BIn;         3 -> AluSel[0]=1, AluSel[1]=0, FIn;   4 -> AluSel[0]=1, AluSel[1]=0, AluOut, AIn
+        OR   0110, 2 -> IrOut, BIn;         3 -> AluSel[0]=0, AluSel[1]=1, FIn;   4 -> AluSel[0]=0, AluSel[1]=1, AluOut, AIn
+        XOR  0111, 2 -> IrOut, BIn;         3 -> AluSel[0]=1, AluSel[1]=1, FIn;   4 -> AluSel[0]=1, AluSel[1]=1, AluOut, AIn
+        LDC  1000, 2 -> AOut, CIn;
         BTR  1001, 2 -> PcInc # Opcode = 4bits, Register=4bits, Bit=3bits, SetClear=1  Max 16 register
         CALL 1010, 2 -> PcOut, StkWr;       3 -> StkCnt, StkSen;        4 -> IrOut, PcInc, Jump
         RET  1011, 2 -> StkCnt, 'StkSen;    3 -> StkOut, PcInc, Jump
@@ -244,18 +244,17 @@ class Word:
         self.PcInc = LogicBit(0)    # Enable increment of the Counter
         self.PcOut = LogicBit(0)    # Put PC on Bus
         self.Jump = LogicBit(0)     # Load Bus into PC
-        self.AccIn = LogicBit(0)    # Load Bus into accumulator register
-        self.AccOut = LogicBit(0)   # Put Acc into Bus
+        self.AIn = LogicBit(0)      # Load Bus into accumulator register
+        self.AOut = LogicBit(0)     # Put value of accumulator register into Bus
         self.BIn = LogicBit(0)      # Load Bus into B register
         self.CIn = LogicBit(0)      # Load Bus into C register
         self.FIn = LogicBit(0)      # Change F register
         self.FOut = LogicBit(0)     # Put F register into Bus
-        self.SumSub = LogicBit(0)   # Enable sum operation in 0, and subtraction in 1
-        self.Alu0 = LogicBit(0)     # Enable in AND and XOR operation
-        self.Alu1 = LogicBit(0)     # Enable in OR and XOR operation
+        self.AddSub = LogicBit(0)   # Enable sum operation in 0, and subtraction in 1
+        self.AluSel = [LogicBit(0), LogicBit(0)]     # Enable in AND and XOR operation, Enable in OR and XOR operation
         self.AluOut = LogicBit(0)   # Put ALU data into Bus
-        self.We = LogicBit(0)       # Write/Read Ram
         self.MarIn = LogicBit(0)    # Load Bus into MAR register
+        self.RamWR = LogicBit(0)    # Write/Read Ram
         self.RamOut = LogicBit(0)   # Put Ram data into Bus
         self.IrIn = LogicBit(0)     # Load Bus into IR register
         self.IrOut = LogicBit(0)    # Put IR register into Bus
@@ -305,12 +304,12 @@ def flogic(clock):
 
         Bus = Pc.Act(Bus, w.PcInc, w.PcOut, w.Jump, w.Reset, Clk)                    # Program counter, 8 bits
         Mar.Act(Bus[0:8], w.MarIn, w.Reset, Clk)                                     # Memory address 8 bits register
-        Bus = Ram.Act(Bus, Mar.Read(), w.We, w.RamOut, LogicBit(0), Clk)             # RAM memory, 8 bits address and 12 bits of data
+        Bus = Ram.Act(Bus, Mar.Read(), w.RamWR, w.RamOut, LogicBit(0), Clk)          # RAM memory, 8 bits address and 12 bits of data
         Bus = Stack.Act(Bus, w.StkCnt, w.StkSen, w.StkWr, w.StkOut, w.Reset, Clk)    # Stack with 16 bytes
-        Bus = A.Act(Bus, w.AccIn, w.AccOut, w.Reset, Clk)
+        Bus = A.Act(Bus, w.AIn, w.AOut, w.Reset, Clk)
         B.Act(Bus[0:8], w.BIn, w.Reset, Clk)
         C.Act(Bus[0:8], w.CIn, w.Reset, Clk)
-        Bus = Alu.Act(Bus, A.Read(), B.Read(), w, F, w.SumSub, w.Alu0, w.Alu1, w.AluOut, Clk)
+        Bus = Alu.Act(Bus, A.Read(), B.Read(), w, F, w.AddSub, w.AluSel, w.AluOut, Clk)
         Bus, Code = Ir.Act(Bus, w.IrIn, w.IrOut, w.Reset, Clk)                       # Instruction register, 12 bits
         InstDec.Act(w, Code, F, Clk)
 
